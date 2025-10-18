@@ -1,27 +1,26 @@
-import express from "express";
-import cors from "cors";
-import fetch from "node-fetch";
-import cheerio from "cheerio";
+const express = require("express");
+const cors = require("cors");
+const fetch = require("node-fetch");
+const cheerio = require("cheerio");
 
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// 🟢 Add your ScraperAPI key here
-const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5"; // Replace with your real key
+// 🟢 Replace with your real ScraperAPI key
+const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5"; 
 
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
 });
 
-// 🧩 Scrape route — works for Amazon, Flipkart, etc.
+// 🧩 Scraper route
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "Missing URL" });
 
   try {
-    // Use ScraperAPI to bypass JavaScript rendering & blocks
     const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
     const html = await response.text();
