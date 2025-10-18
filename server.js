@@ -6,43 +6,45 @@ import * as cheerio from "cheerio";
 const app = express();
 app.use(cors());
 
-// Route: /preview?url=https://example.com
-app.get("/preview", async (req, res) => {
-  const targetUrl = req.query.url;
-  if (!targetUrl) return res.status(400).json({ error: "Missing URL" });
+app.get("/scrape", async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: "Missing URL" });
 
   try {
-    const response = await fetch(targetUrl, {
+    const response = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
       },
     });
+
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Extract meta tags
     const title =
-      $('meta[property="og:title"]').attr("content") ||
+      $("meta[property='og:title']").attr("content") ||
       $("title").text() ||
       "No title found";
-
     const description =
-      $('meta[property="og:description"]').attr("content") ||
-      $('meta[name="description"]').attr("content") ||
+      $("meta[property='og:description']").attr("content") ||
+      $("meta[name='description']").attr("content") ||
       "No description found";
-
     const image =
-      $('meta[property="og:image"]').attr("content") ||
-      $('meta[name="twitter:image"]').attr("content") ||
+      $("meta[property='og:image']").attr("content") ||
+      $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
     res.json({ title, description, image });
-  } catch (err) {
-    console.error("Error:", err);
+  } catch (error) {
+    console.error("❌ Scrape Error:", error);
     res.status(500).json({ error: "Failed to fetch data" });
   }
 });
 
+app.get("/", (req, res) => {
+  res.send("✅ Flipkart Scraper API is running!");
+});
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
