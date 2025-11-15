@@ -6,15 +6,16 @@ import * as cheerio from "cheerio";
 const app = express();
 app.use(cors());
 
-// ----- Function to expand short redirect URLs -----
+// ---- FIXED: Flipkart short URL expansion ----
 async function expandURL(url) {
   try {
-    const response = await axios.get(url, {
+    const response = await axios.head(url, {
       maxRedirects: 5,
       validateStatus: (status) => status >= 200 && status < 400,
     });
 
     return response.request.res.responseUrl || url;
+
   } catch (err) {
     return url;
   }
@@ -26,14 +27,14 @@ async function scrapeProduct(url) {
     // Expand Flipkart short URLs
     if (url.includes("dl.flipkart.com")) {
       url = await expandURL(url);
-      console.log("Expanded Flipkart URL:", url);
+      console.log("Expanded URL:", url);
     }
 
     const response = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/121 Safari/537.36",
-      },
+      }
     });
 
     const $ = cheerio.load(response.data);
@@ -95,14 +96,16 @@ async function scrapeProduct(url) {
       price: price || "N/A",
       image: image || null,
       description: description || "No description found",
-      finalURL: url, // helpful
+      finalURL: url,
     };
+
   } catch (err) {
     return {
       title: "Untitled Product",
       price: "N/A",
       image: null,
       description: "No description found",
+      finalURL: url
     };
   }
 }
