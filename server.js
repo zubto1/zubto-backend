@@ -1,78 +1,81 @@
-import express from "express";
-import cors from "cors";
-import puppeteer from "puppeteer";
+const express = require("express");
+const axios = require("axios");
+const cheerio = require("cheerio");
+const cors = require("cors");
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
-// 🔹 Puppeteer launch settings for Render FREE
-async function launchBrowser() {
-  return await puppeteer.launch({
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--no-zygote",
-      "--single-process"
-    ]
-  });
+// ⚠️ Put your ScraperAPI key here
+const SCRAPER_API_KEY = "263a13252d44362dfc8e75a90bfd9f14";
+
+// Fetch HTML using ScraperAPI (bypass blocks)
+async function fetchHTML(url) {
+    const apiURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&autoparse=false&url=${encodeURIComponent(
+        url
+    )}`;
+
+    const response = await axios.get(apiURL);
+    return response.data;
 }
 
-// 🔍 Scrape basic product info
+// Extract product data
 async function scrapeProduct(url) {
-  const browser = await launchBrowser();
-  const page = await browser.newPage();
+    const html = await fetchHTML(url);
+    const $ = cheerio.load(html);
 
-  try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    // Universal selectors for all sites
+    const title =
+        $("#productTitle").text().trim() ||           // Amazon
+        $(".B_NuCI").text().trim() ||                // Flipkart
+        $("h1.prod-name").text().trim() ||           // Ajio
+        $("h1.pdp-title").text().trim() ||           // Myntra
+        $("h1").first().text().trim();
 
-    const data = await page.evaluate(() => {
-      const get = (selector) =>
-        document.querySelector(selector)?.textContent?.trim() || null;
+    const image =
+        $("#imgTagWrapperId img").attr("src") ||
+        $("#landingImage").attr("src") ||
+        $("img._2r_T1I").attr("src") ||
+        $("img.DByuf4").attr("src") ||
+        $("img#prodImageDefault").attr("src") ||
+        $("img.pdp-image").attr("src") ||
+        $("img").first().attr("src");
 
-      const title =
-        get("#productTitle") ||
-        get(".a-size-large") ||
-        get(".B_NuCI") || // Flipkart
-        "Untitled Product";
+    const price =
+        $("#priceblock_ourprice").text().trim() ||
+        $("#priceblock_dealprice").text().trim() ||
+        $("div._30jeq3").text().trim() ||
+        $("div.Nx9bqj").text().trim() ||
+        $("span.prod-sp").text().trim() ||
+        $("span.pdp-price").text().trim() ||
+        $("span").filter(function () {
+            return $(this).text().includes("₹");
+        }).first().text().trim();
 
-      const price =
-        get("#priceblock_ourprice") ||
-        get("#priceblock_dealprice") ||
-        get(".a-price-whole") ||
-        get("._30jeq3") || // Flipkart
-        null;
+    const description =
+        $("#feature-bullets").text().trim() ||
+        $("div._1mXcCf").text().trim() ||
+        $("div.X3BRps").text().trim() ||
+        $("div.details").text().trim() ||
+        $("p.pdp-product-description-content").text().trim() ||
+        $("p").first().text().trim();
 
-      const image =
-        document.querySelector("#landingImage")?.src ||
-        document.querySelector("img")?.src ||
-        null;
-
-      return { title, price, image };
-    });
-
-    await browser.close();
-    return data;
-  } catch (err) {
-    await browser.close();
-    return {
-      title: "Untitled Product",
-      price: null,
-      image: null
-    };
-  }
+    return { title, image, price, description };
 }
 
-// 📦 API route
-app.get("/scrape", async (req, res) => {
-  const { url } = req.query;
+// API endpoint
+app.post("/scrape", async (req, res) => {
+    const { url } = req.body;
 
-  if (!url) return res.json({ error: "Missing URL" });
+    if (!url) return res.json({ error: "URL missing" });
 
-  const info = await scrapeProduct(url);
-  res.json(info);
+    try {
+        const data = await scrapeProduct(url);
+        res.json(data);
+    } catch (error) {
+        res.json({ error: true, message: error.message });
+    }
 });
 
-app.listen(10000, () => console.log("Server running on port 10000"));
+app.listen(3000, () => console.log("Scraper running on port 3000"));
