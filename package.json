@@ -10,9 +10,9 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "express": "^4.18.2",
-    "puppeteer": "19.11.1",
-    "cheerio": "^1.0.0-rc.12"
+    "cors": "^2.8.5",
+    "cheerio": "^1.0.0-rc.12",
+    "puppeteer": "19.7.2"
   }
 }
