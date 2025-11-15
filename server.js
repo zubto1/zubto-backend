@@ -1,41 +1,30 @@
 // server.js
 import express from "express";
 import cors from "cors";
-import puppeteer from "puppeteer";
-import * as cheerio from "cheerio";   // ✅ FIXED: correct import
+import axios from "axios";
+import * as cheerio from "cheerio";
 
 const app = express();
 app.use(cors());
 
-async function launchBrowser() {
-  return await puppeteer.launch({
-    headless: "new",
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-gpu",
-      "--no-zygote",
-      "--single-process"
-    ]
-  });
-}
-
+// ---------- UNIVERSAL SCRAPER ----------
 async function scrapeProduct(url) {
-  const browser = await launchBrowser();
-  const page = await browser.newPage();
-
   try {
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 35000 });
+    const response = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 Chrome/118 Safari/537.36",
+      },
+    });
 
-    const html = await page.content();
-    const $ = cheerio.load(html);
+    const $ = cheerio.load(response.data);
 
-    let title = null;
-    let price = null;
-    let image = null;
-    let description = null;
+    let title = null,
+      price = null,
+      image = null,
+      description = "";
 
+    // ---------------- AMAZON ----------------
     if (url.includes("amazon")) {
       title = $("#productTitle").text().trim();
       price =
@@ -49,7 +38,8 @@ async function scrapeProduct(url) {
         .join(" | ");
     }
 
-    if (url.includes("flipkart")) {
+    // ---------------- FLIPKART ----------------
+    else if (url.includes("flipkart")) {
       title = $(".B_NuCI").text().trim();
       price = $("._30jeq3").first().text().trim();
       image = $("._396cs4").attr("src");
@@ -59,54 +49,54 @@ async function scrapeProduct(url) {
         .join(" | ");
     }
 
-    if (url.includes("ajio")) {
-      title = $(".prod-sp").text().trim();
-      price = $(".prod-sp .price").first().text().trim();
-      image = $(".image-container img").attr("src");
-      description = $(".prod-descp ul li")
+    // ---------------- AJIO ----------------
+    else if (url.includes("ajio")) {
+      title = $(".prod-sp").first().text().trim();
+      price = $(".price").first().text().trim();
+      image = $("img").first().attr("src");
+      description = $(".prod-descp li")
         .map((i, el) => $(el).text().trim())
         .get()
         .join(" | ");
     }
 
-    if (url.includes("myntra")) {
+    // ---------------- MYNTRA ----------------
+    else if (url.includes("myntra")) {
       title = $(".pdp-title").text().trim() + " " + $(".pdp-name").text().trim();
       price = $(".pdp-price span").first().text().trim();
-      image = $(".image-grid-image").attr("src");
+      image = $(".image-grid-image").first().attr("src");
       description = $(".pdp-product-description-content p")
         .map((i, el) => $(el).text().trim())
         .get()
         .join(" | ");
     }
 
-    await browser.close();
-
     return {
       title: title || "Untitled Product",
       price: price || "N/A",
       image: image || null,
-      description: description || "No description"
+      description: description || "No description found",
     };
-
   } catch (err) {
-    await browser.close();
     return {
       title: "Untitled Product",
       price: "N/A",
       image: null,
-      description: "No description"
+      description: "No description found",
     };
   }
 }
 
+// ----------- API ROUTE ----------
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
 
   if (!url) return res.json({ error: "Missing URL" });
 
-  const info = await scrapeProduct(url);
-  res.json(info);
+  const result = await scrapeProduct(url);
+  res.json(result);
 });
 
+// ----------- START SERVER ----------
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🔥 Server running at ${PORT}`));
+app.listen(PORT, () => console.log(`🔥 Server running on ${PORT}`));
