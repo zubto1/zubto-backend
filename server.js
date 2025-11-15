@@ -2,12 +2,11 @@
 import express from "express";
 import cors from "cors";
 import puppeteer from "puppeteer";
-import cheerio from "cheerio";
+import * as cheerio from "cheerio";   // ✅ FIXED: correct import
 
 const app = express();
 app.use(cors());
 
-// 🔹 Puppeteer launch config for Render FREE
 async function launchBrowser() {
   return await puppeteer.launch({
     headless: "new",
@@ -22,7 +21,6 @@ async function launchBrowser() {
   });
 }
 
-// 🔍 Extract product details (Amazon, Flipkart, Ajio, Myntra)
 async function scrapeProduct(url) {
   const browser = await launchBrowser();
   const page = await browser.newPage();
@@ -38,29 +36,21 @@ async function scrapeProduct(url) {
     let image = null;
     let description = null;
 
-    // ⭐ Amazon selectors
     if (url.includes("amazon")) {
-      title =
-        $("#productTitle").text().trim() ||
-        $(".a-size-large").text().trim();
-
+      title = $("#productTitle").text().trim();
       price =
         $("#priceblock_ourprice").text().trim() ||
         $("#priceblock_dealprice").text().trim() ||
         $(".a-price-whole").first().text().trim();
-
       image = $("#landingImage").attr("src");
-
-      description =
-        $("#feature-bullets ul li span")
-          .map((i, el) => $(el).text().trim())
-          .get()
-          .join(" | ");
+      description = $("#feature-bullets ul li span")
+        .map((i, el) => $(el).text().trim())
+        .get()
+        .join(" | ");
     }
 
-    // ⭐ Flipkart selectors
     if (url.includes("flipkart")) {
-      title = $("._35KyD6").text().trim() || $(".B_NuCI").text().trim();
+      title = $(".B_NuCI").text().trim();
       price = $("._30jeq3").first().text().trim();
       image = $("._396cs4").attr("src");
       description = $("._1mXcCf p")
@@ -69,7 +59,6 @@ async function scrapeProduct(url) {
         .join(" | ");
     }
 
-    // ⭐ Ajio selectors
     if (url.includes("ajio")) {
       title = $(".prod-sp").text().trim();
       price = $(".prod-sp .price").first().text().trim();
@@ -80,7 +69,6 @@ async function scrapeProduct(url) {
         .join(" | ");
     }
 
-    // ⭐ Myntra selectors
     if (url.includes("myntra")) {
       title = $(".pdp-title").text().trim() + " " + $(".pdp-name").text().trim();
       price = $(".pdp-price span").first().text().trim();
@@ -111,7 +99,6 @@ async function scrapeProduct(url) {
   }
 }
 
-// 📦 API Endpoint
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
 
@@ -121,6 +108,5 @@ app.get("/scrape", async (req, res) => {
   res.json(info);
 });
 
-// 🚀 Start Server
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`🔥 Server running at ${PORT}`));
