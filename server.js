@@ -1,42 +1,39 @@
 import express from "express";
 import cors from "cors";
-import axios from "axios";
+import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
 
 const app = express();
 app.use(cors());
 
-// ---- FIXED: Flipkart short URL expansion ----
-async function expandURL(url) {
-  try {
-    const response = await axios.head(url, {
-      maxRedirects: 5,
-      validateStatus: (status) => status >= 200 && status < 400,
-    });
-
-    return response.request.res.responseUrl || url;
-
-  } catch (err) {
-    return url;
-  }
+async function launchBrowser() {
+  return await puppeteer.launch({
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--single-process"
+    ]
+  });
 }
 
-// -------- Universal Scraper --------
 async function scrapeProduct(url) {
   const browser = await launchBrowser();
   const page = await browser.newPage();
 
   try {
-    // STEP 1: OPEN URL (short link allowed)
+    // First load (short links possible)
     await page.goto(url, { waitUntil: "networkidle2", timeout: 45000 });
 
-    // STEP 2: GET REAL URL after redirect
+    // Resolve final URL
     const finalURL = page.url();
 
-    // STEP 3: LOAD REAL PRODUCT PAGE
+    // Load final product page
     await page.goto(finalURL, { waitUntil: "networkidle2", timeout: 45000 });
 
-    // Get HTML
     const html = await page.content();
     const $ = cheerio.load(html);
 
@@ -60,7 +57,7 @@ async function scrapeProduct(url) {
     if (finalURL.includes("flipkart")) {
       title = $(".B_NuCI").text().trim();
       price = $("._30jeq3").first().text().trim();
-      image = $("img._396cs4").attr("src");
+      image = $("img._396cs4").attr("src") || $("img._2r_T1I").attr("src");
       description = $("._1mXcCf p")
         .map((i, el) => $(el).text().trim())
         .get()
@@ -69,8 +66,8 @@ async function scrapeProduct(url) {
 
     // AJIO
     if (finalURL.includes("ajio")) {
-      title = $(".prod-sp h1").text().trim();
-      price = $(".prod-price").first().text().trim();
+      title = $(".prod-sp:nth-child(1)").text().trim();
+      price = $(".price").first().text().trim();
       image = $(".image-container img").attr("src");
       description = $(".prod-descp ul li")
         .map((i, el) => $(el).text().trim())
@@ -101,6 +98,7 @@ async function scrapeProduct(url) {
 
   } catch (err) {
     await browser.close();
+
     return {
       title: "Untitled Product",
       price: "N/A",
@@ -111,16 +109,13 @@ async function scrapeProduct(url) {
   }
 }
 
-// -------- API Route --------
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
-
   if (!url) return res.json({ error: "Missing URL" });
 
-  const data = await scrapeProduct(url);
-  res.json(data);
+  const info = await scrapeProduct(url);
+  res.json(info);
 });
 
-// Server
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("🔥 Backend running on " + PORT));
+app.listen(PORT, () => console.log(`🔥 Server running on port ${PORT}`));
