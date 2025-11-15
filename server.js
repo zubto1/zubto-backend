@@ -1,4 +1,3 @@
-// server.js
 import express from "express";
 import cors from "cors";
 import axios from "axios";
@@ -7,13 +6,33 @@ import * as cheerio from "cheerio";
 const app = express();
 app.use(cors());
 
-// ---------- UNIVERSAL SCRAPER ----------
+// ----- Function to expand short redirect URLs -----
+async function expandURL(url) {
+  try {
+    const response = await axios.get(url, {
+      maxRedirects: 5,
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+
+    return response.request.res.responseUrl || url;
+  } catch (err) {
+    return url;
+  }
+}
+
+// -------- Universal Scraper --------
 async function scrapeProduct(url) {
   try {
+    // Expand Flipkart short URLs
+    if (url.includes("dl.flipkart.com")) {
+      url = await expandURL(url);
+      console.log("Expanded Flipkart URL:", url);
+    }
+
     const response = await axios.get(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Linux; Android 10; Mobile) AppleWebKit/537.36 Chrome/118 Safari/537.36",
+          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/121 Safari/537.36",
       },
     });
 
@@ -24,7 +43,7 @@ async function scrapeProduct(url) {
       image = null,
       description = "";
 
-    // ---------------- AMAZON ----------------
+    // Amazon
     if (url.includes("amazon")) {
       title = $("#productTitle").text().trim();
       price =
@@ -38,20 +57,20 @@ async function scrapeProduct(url) {
         .join(" | ");
     }
 
-    // ---------------- FLIPKART ----------------
+    // Flipkart
     else if (url.includes("flipkart")) {
       title = $(".B_NuCI").text().trim();
       price = $("._30jeq3").first().text().trim();
-      image = $("._396cs4").attr("src");
+      image = $("._396cs4, .q6DClP").first().attr("src");
       description = $("._1mXcCf p")
         .map((i, el) => $(el).text().trim())
         .get()
         .join(" | ");
     }
 
-    // ---------------- AJIO ----------------
+    // Ajio
     else if (url.includes("ajio")) {
-      title = $(".prod-sp").first().text().trim();
+      title = $(".prod-sp").text().trim();
       price = $(".price").first().text().trim();
       image = $("img").first().attr("src");
       description = $(".prod-descp li")
@@ -60,7 +79,7 @@ async function scrapeProduct(url) {
         .join(" | ");
     }
 
-    // ---------------- MYNTRA ----------------
+    // Myntra
     else if (url.includes("myntra")) {
       title = $(".pdp-title").text().trim() + " " + $(".pdp-name").text().trim();
       price = $(".pdp-price span").first().text().trim();
@@ -76,6 +95,7 @@ async function scrapeProduct(url) {
       price: price || "N/A",
       image: image || null,
       description: description || "No description found",
+      finalURL: url, // helpful
     };
   } catch (err) {
     return {
@@ -87,16 +107,16 @@ async function scrapeProduct(url) {
   }
 }
 
-// ----------- API ROUTE ----------
+// -------- API Route --------
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
 
   if (!url) return res.json({ error: "Missing URL" });
 
-  const result = await scrapeProduct(url);
-  res.json(result);
+  const data = await scrapeProduct(url);
+  res.json(data);
 });
 
-// ----------- START SERVER ----------
+// Server
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🔥 Server running on ${PORT}`));
+app.listen(PORT, () => console.log("🔥 Backend running on " + PORT));
