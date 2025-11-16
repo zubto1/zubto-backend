@@ -1,130 +1,128 @@
 const express = require("express");
+const cors = require("cors");
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
-const cors = require("cors");
 
 const app = express();
 app.use(cors());
 
-// Helper: safely extract text
-const clean = (txt) => txt?.replace(/\s+/g, " ").trim() || "";
+const PORT = process.env.PORT || 3000;
 
-// SCRAPER FUNCTION
-async function scrape(url) {
+// 🔑 Your ScraperAPI key
+const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
+
+
+// 🔵 1. Expand Flipkart short URLs
+async function expandFlipkartURL(shortURL) {
   try {
-    const res = await fetch(url, {
+    const res = await fetch(shortURL, {
+      redirect: "manual",
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
       },
     });
 
-    const html = await res.text();
-    const $ = cheerio.load(html);
-
-    let title = "";
-    let price = "";
-    let image = "";
-    let desc = "";
-
-    // ----------------------------
-    // 🔵 FLIPKART SCRAPER
-    // ----------------------------
-    if (url.includes("flipkart.com")) {
-      title =
-        clean($("span.B_NuCI").text()) ||
-        clean($("h1").text());
-
-      price =
-        clean($("div._30jeq3._16Jk6d").text()) ||
-        clean($("div._25b18c ._30jeq3").text());
-
-      image =
-        $("img._396cs4._2amPTt").attr("src") ||
-        $("img._96yvcc").attr("src") ||
-        $("img._2r_T1I").attr("src");
-
-      desc =
-        clean($("div._1AN87F p").text()) ||
-        clean($("div._2418kt ul li").first().text());
-    }
-
-    // ----------------------------
-    // 🟠 AMAZON SCRAPER
-    // ----------------------------
-    else if (url.includes("amazon.")) {
-      title =
-        clean($("#productTitle").text()) ||
-        clean($("#title").text());
-
-      price =
-        clean($("#priceblock_ourprice").text()) ||
-        clean($("#priceblock_dealprice").text()) ||
-        clean($(".a-price-whole").first().text());
-
-      image =
-        $("#landingImage").attr("src") ||
-        $("img.a-dynamic-image").attr("src");
-
-      desc =
-        clean($("#feature-bullets ul li span").first().text()) ||
-        clean($("#productDescription p").text());
-    }
-
-    // ----------------------------
-    // 🟣 MEESHO SCRAPER
-    // ----------------------------
-    else if (url.includes("meesho.com")) {
-      title = clean($("h1").first().text());
-      price = clean($("h4").first().text());
-      image = $("img").first().attr("src");
-      desc = clean($("p").first().text());
-    }
-
-    // ----------------------------
-    // 🟢 AJIO SCRAPER
-    // ----------------------------
-    else if (url.includes("ajio.com")) {
-      title = clean($(".prod-name").text());
-      price = clean($(".price").text());
-      image = $("img").first().attr("src");
-      desc = clean($(".prod-info-section").text());
-    }
-
-    // ----------------------------
-    // 🟡 MYNTRA SCRAPER
-    // ----------------------------
-    else if (url.includes("myntra.com")) {
-      title = clean($(".pdp-title").text() + " " + $(".pdp-name").text());
-      price = clean($(".pdp-price").text());
-      image = $("img").first().attr("src");
-      desc = clean($(".pdp-product-description-content").text());
-    }
-
-    return {
-      title: title || "No title found",
-      price: price || "N/A",
-      image: image || null,
-      description: desc || "No description found",
-      finalURL: url,
-    };
+    const location = res.headers.get("location");
+    return location || shortURL;
   } catch (err) {
-    return { error: err.message };
+    return shortURL;
   }
 }
 
-// ----------------------------
-// ROUTE
-// ----------------------------
-app.get("/scrape", async (req, res) => {
-  const url = req.query.url;
 
+// 🔵 2. Scraper Function
+async function scrapeProduct(finalURL) {
+  try {
+    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(
+      finalURL
+    )}`;
+
+    const response = await fetch(scraperURL);
+    const html = await response.text();
+
+    const $ = cheerio.load(html);
+
+    // Title
+    const title =
+      $("meta[property='og:title']").attr("content") ||
+      $("title").text().trim() ||
+      $("h1").first().text().trim() ||
+      "";
+
+    // Description
+    const description =
+      $("meta[property='og:description']").attr("content") ||
+      $("meta[name='description']").attr("content") ||
+      $(".productDescription").text().trim() ||
+      "";
+
+    // Image
+    const image =
+      $("meta[property='og:image']").attr("content") ||
+      $("img").first().attr("src") ||
+      null;
+
+    // Price - covers Amazon / Flipkart / Ajio / Myntra
+    const priceSelectors = [
+      "#priceblock_ourprice",
+      "#priceblock_dealprice",
+      ".a-price .a-offscreen",
+      "._30jeq3",           // Flipkart
+      "._16Jk6d",           // Flipkart
+      ".prod-sp",           // Ajio
+      ".price",             // Generic
+      ".pdp-price",         // Myntra
+      ".discounted-price"   // Ajio alt
+    ];
+
+    let price = "N/A";
+    for (let s of priceSelectors) {
+      let p = $(s).first().text().trim();
+      if (p && p.length > 1) {
+        price = p;
+        break;
+      }
+    }
+
+    return {
+      title,
+      price,
+      image,
+      description,
+      finalURL,
+    };
+  } catch (err) {
+    return {
+      error: "Scraping failed",
+      details: err.message,
+    };
+  }
+}
+
+
+// 🔵 3. Endpoint
+app.get("/scrape", async (req, res) => {
+  let { url } = req.query;
   if (!url) return res.json({ error: "URL is required" });
 
-  const data = await scrape(url);
+  // Expand Flipkart short link
+  if (url.includes("dl.flipkart.com")) {
+    url = await expandFlipkartURL(url);
+  }
+
+  const data = await scrapeProduct(url);
   res.json(data);
 });
 
-app.listen(3000, () =>
-  console.log("Server running on port 3000")
-);
+
+// Home route
+app.get("/", (req, res) => {
+  res.send("✅ Zubto Product Backend is running...");
+});
+
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
