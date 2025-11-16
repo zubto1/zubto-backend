@@ -20,7 +20,7 @@ app.get("/scrape", async (req, res) => {
   if (!url) return res.status(400).json({ error: "Missing URL" });
 
   try {
-    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
+    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&render=true&country=us&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
     const html = await response.text();
     const $ = cheerio.load(html);
@@ -45,14 +45,16 @@ app.get("/scrape", async (req, res) => {
 
     // ---- PRICE (Based on URL type) ----
     let price = "N/A";
-
+    
     // ---------------------- AMAZON ----------------------
     if (url.includes("amazon")) {
       price =
         $("#priceblock_ourprice").text().trim() ||
         $("#priceblock_dealprice").text().trim() ||
         $(".a-price .a-offscreen").first().text().trim() ||
-        $("span.a-price-whole").first().text().trim();
+        $("span.a-price-whole").first().text().trim() ||
+        $("#corePrice_feature_div .a-offscreen").first().text().trim() ||
+        $("#tp_price_block_total_price_ww .a-offscreen").first().text().trim();
     }
 
     // ---------------------- FLIPKART ----------------------
