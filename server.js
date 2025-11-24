@@ -1,82 +1,94 @@
-const express = require("express");
-const cors = require("cors");
-const fetch = require("node-fetch");
-const cheerio = require("cheerio");
+import express from "express";
+import cors from "cors";
+import puppeteer from "puppeteer";
 
 const app = express();
 app.use(cors());
 
-const PORT = process.env.PORT || 3000;
+async function launchBrowser() {
+  return await puppeteer.launch({
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-zygote",
+      "--single-process"
+    ]
+  });
+}
 
-// Replace with your actual ScraperAPI key
-const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
-
-app.get("/", (req, res) => {
-  res.send("✅ Zubto Product Backend is running...");
-});
-
-// 🧩 Scraper route with price extraction
-app.get("/scrape", async (req, res) => {
-  const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Missing URL" });
+async function scrapeProduct(url) {
+  const browser = await launchBrowser();
+  const page = await browser.newPage();
 
   try {
-    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
-    const response = await fetch(scraperURL);
-    const html = await response.text();
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 50000 });
 
-    const $ = cheerio.load(html);
+    const finalURL = page.url();
 
-    const title =
-      $("meta[property='og:title']").attr("content") ||
-      $("title").text() ||
-      "No title found";
+    const data = await page.evaluate(() => {
+      const $ = document;
 
-    const description =
-      $("meta[property='og:description']").attr("content") ||
-      $("meta[name='description']").attr("content") ||
-      "No description found";
+      const get = (selector) =>
+        $.querySelector(selector)?.textContent?.trim() || null;
+      const getAll = (selector) =>
+        [...$.querySelectorAll(selector)].map(el => el.textContent.trim()).join(" | ") || null;
+      const getSrc = (selector) =>
+        $.querySelector(selector)?.src || null;
 
-    const image =
-      $("meta[property='og:image']").attr("content") ||
-      $("img").first().attr("src") ||
-      "https://via.placeholder.com/400x300?text=No+Image";
+      let title = get("#productTitle") || get(".B_NuCI") || get(".prod-title") || get(".pdp-title");
+      let price =
+        get("#priceblock_ourprice") ||
+        get("#priceblock_dealprice") ||
+        get(".a-price-whole") ||
+        get("._30jeq3") ||
+        get(".price") ||
+        get("span[data-testid='price']");
 
-    // Price extraction, checks multiple selectors for compatibility
-    const priceSelectors = [
-      "meta[property='product:price:amount']",
-      "span#priceblock_ourprice",
-      "span#priceblock_dealprice",
-      "span.a-price-whole",
-      "div._30jeq3._16Jk6d",
-      "div.price",
-      "span[data-testid='price']",
-      "span[aria-label*='₹']",
-      "div.product-price",
-      "span.s1q9rs8r-0",
-      "span.P3O9Ic"
-    ];
+      let image =
+        getSrc("#landingImage") ||
+        getSrc("img._396cs4") ||
+        getSrc("img._2r_T1I") ||
+        getSrc(".image-grid-image") ||
+        getSrc(".image-container img");
 
-    let price = "";
-    for (const selector of priceSelectors) {
-      price = $(selector).first().text().replace(/[
+      let description =
+        getAll("#feature-bullets ul li span") ||
+        getAll("._1mXcCf p") ||
+        getAll(".product-description p") ||
+        getAll(".pdp-product-description-content p");
 
-]+|[s]{2,}/g, ' ').trim();
-      if (price) break;
-    }
-    if (!price) {
-      price = $("meta[itemprop='price']").attr("content") ||
-              $("meta[name='price']").attr("content") ||
-              "No price found";
-    }
+      return { title, price, image, description };
+    });
 
-    res.json({ title, description, image, price });
-  } catch (error) {
-    console.error("❌ Scraper Error:", error);
-    res.status(500).json({ error: "Failed to fetch product data" });
+    await browser.close();
+
+    return {
+      title: data.title || "No title found",
+      price: data.price || "N/A",
+      image: data.image || null,
+      description: data.description || "No description found",
+      finalURL
+    };
+
+  } catch (err) {
+    await browser.close();
+    return {
+      title: "Error",
+      price: "N/A",
+      image: null,
+      description: err.message,
+      finalURL: url
+    };
   }
+}
+
+app.get("/scrape", async (req, res) => {
+  if (!req.query.url) return res.json({ error: "Missing URL" });
+  res.json(await scrapeProduct(req.query.url));
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🔥 Server live on ${PORT}`));
