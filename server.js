@@ -47,11 +47,18 @@ app.get("/scrape", async (req, res) => {
     //-------------------------
     // Extract Price
     //-------------------------
-    const price =
-      $("div._30jeq3._16Jk6d").first().text().trim() || // Flipkart Price
-      $("._30jeq3").first().text().trim() || // Old Flipkart price selector
-      $("meta[property='product:price:amount']").attr("content") ||
-      "Price not found";
+    //-------------------------
+    // Extract Price (Strong Version)
+    //-------------------------
+    let price = 
+    $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
+    $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
+    $("div.Udgv3w").first().text().trim() ||            // Sale price block
+    $("div.CxhGGd").first().text().trim() ||            // Another new class
+    $("._25b18c").first().text().trim() ||              // Mobile price layout
+    $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
+    $("meta[property='product:price:amount']").attr("content") ||
+    "Price not found";
 
     //-------------------------
     // Extract Image
