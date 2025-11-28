@@ -18,11 +18,25 @@ function cleanPrice(rawPrice) {
   return `₹${number.toLocaleString()}`;
 }
 
-// Force desktop version + unblock redirect short links
+// Clean Review Count → only digits
+function cleanReviewCount(raw) {
+  if (!raw) return null;
+  const num = raw.replace(/[^\d]/g, "");
+  return num ? parseInt(num) : null;
+}
+
+// Clean Rating → keep only number like 4.1
+function cleanRating(raw) {
+  if (!raw) return null;
+  const match = raw.match(/(\d+(\.\d+)?)/);
+  return match ? parseFloat(match[0]) : null;
+}
+
+// Load HTML through Scraper API
 async function fetchHTML(url) {
   const scraperURL =
     `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&device_type=desktop&url=${encodeURIComponent(url)}`;
-  
+
   const response = await fetch(scraperURL);
   return await response.text();
 }
@@ -42,7 +56,7 @@ app.get("/scrape", async (req, res) => {
     const isAmazon = url.includes("amazon");
     const isFlipkart = url.includes("flipkart");
 
-    // Product Title
+    // Title
     const title =
       $("meta[property='og:title']").attr("content") ||
       $("span.B_NuCI").text().trim() ||
@@ -56,7 +70,7 @@ app.get("/scrape", async (req, res) => {
       $("meta[name='description']").attr("content") ||
       "No description found";
 
-    // Price (Amazon & Flipkart)
+    // Price
     let rawPrice =
       $("#priceblock_ourprice").text().trim() ||
       $("#priceblock_dealprice").text().trim() ||
@@ -69,31 +83,35 @@ app.get("/scrape", async (req, res) => {
 
     // MRP
     const mrp = cleanPrice(
-      $("div._3I9_wc._2p6lqe").text().trim() || 
+      $("div._3I9_wc._2p6lqe").text().trim() ||
       $("#priceblock_ourprice").text()?.trim() ||
       null
     );
 
     // Discount
     const discount =
-      $("div._3Ay6Sb span").first().text().trim() || // Flipkart
-      $(".savingsPercentage").first().text().trim() || // Amazon
+      $("div._3Ay6Sb span").first().text().trim() ||
+      $(".savingsPercentage").first().text().trim() ||
       null;
 
-    // Ratings
-    const rating =
-      $("div._3LWZlK").first().text().trim() ||
+    // ⭐ Rating
+    const rawRating =
       $(".a-icon-alt").first().text().trim() ||
+      $("div._3LWZlK").first().text().trim() ||
       $("#acrPopover").attr("title") ||
       null;
 
-    // Reviews Count
-    const reviews =
-      $("span._2_R_DZ").text().trim() || // Flipkart
+    const rating = cleanRating(rawRating);
+
+    // 📊 Review Count
+    const rawReviews =
       $("#acrCustomerReviewText").text().trim() ||
+      $("span._2_R_DZ").text().trim() ||
       null;
 
-    // Product Image (best quality)
+    const reviews = cleanReviewCount(rawReviews);
+
+    // Product Image
     const image =
       $("#landingImage").attr("src") ||
       $(".imgTagWrapper img").attr("data-old-hires") ||
