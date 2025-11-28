@@ -8,38 +8,25 @@ app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// 🟢 Replace with your real ScraperAPI key
+// Your ScraperAPI key
 const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
 
-// -------------------------
-// Helper: Clean Price
-// -------------------------
+/* Helper: Clean Price */
 function cleanPrice(rawPrice) {
   if (!rawPrice) return null;
-
-  // Match numbers with optional decimal
   const numbers = rawPrice.match(/\d+(\.\d+)?/g);
-  if (!numbers || numbers.length === 0) return null;
-
-  // Take first number only
+  if (!numbers) return null;
   const number = parseFloat(numbers[0]);
-
-  // Remove decimal if integer
   const finalNumber = Number.isInteger(number) ? number.toString() : number.toFixed(2);
-
   return `₹${finalNumber}`;
 }
 
-// -------------------------
-// Root route
-// -------------------------
+/* Root route */
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
 });
 
-// -------------------------
-// Scraper route
-// -------------------------
+/* Scrape route */
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "Missing URL" });
@@ -47,54 +34,79 @@ app.get("/scrape", async (req, res) => {
   try {
     const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
+    
     const html = await response.text();
-
     const $ = cheerio.load(html);
+    const isAmazon = url.includes("amazon");
+    const isFlipkart = url.includes("flipkart");
 
-    //-------------------------
-    // Extract Title
-    //-------------------------
+    /* Title */
     const title =
       $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() || // Flipkart title
+      $("span.B_NuCI").text().trim() || // Flipkart
       $("title").text().trim() ||
       "No title found";
 
-    //-------------------------
-    // Extract Description
-    //-------------------------
+    /* Description */
     const description =
       $("meta[property='og:description']").attr("content") ||
+      $("div._1mXcCf").text().trim() || // Flipkart
       $("meta[name='description']").attr("content") ||
       "No description found";
 
-    //-------------------------
-    // Extract Price
-    //-------------------------
+    /* Price + MRP + Discount */
     let rawPrice =
-      $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
-      $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
-      $("div.Udgv3w").first().text().trim() ||            // Sale price block
-      $("div.CxhGGd").first().text().trim() ||            // Another new class
-      $("._25b18c").first().text().trim() ||              // Mobile price layout
-      $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
+      $("div._30jeq3._16Jk6d").first().text().trim() || 
+      $("div.Nx9bqj.CxhGGd").first().text().trim() ||
+      $(".a-price .a-offscreen").first().text().trim() ||
       $("meta[property='product:price:amount']").attr("content") ||
       null;
 
     const price = cleanPrice(rawPrice);
 
-    //-------------------------
-    // Extract Image
-    //-------------------------
+    const mrp =
+      $("div._3I9_wc._2p6lqe").text().trim() || // Flipkart MRP
+      $("#priceblock_ourprice").text().trim() || // Amazon
+      $("#priceblock_saleprice").text().trim() ||
+      null;
+
+    const discount =
+      $("div._3Ay6Sb span").first().text().trim() || // Flipkart
+      $(".savingsPercentage").first().text().trim() || // Amazon
+      null;
+
+    /* Rating + Reviews */
+    const rating =
+      $("div._3LWZlK").first().text().trim() || // Flipkart
+      $("#acrPopover").attr("title") ||
+      $(".a-icon-alt").first().text().trim() ||
+      null;
+
+    const reviews =
+      $("span._2_R_DZ span").last().text().trim() || // Flipkart
+      $("#acrCustomerReviewText").text().trim() ||
+      null;
+
+    /* Image */
     const image =
       $("meta[property='og:image']").attr("content") ||
+      $("img._396cs4._2amPTt._3qGmMb").attr("src") || // Flipkart desktop
+      $("img._396cs4").attr("src") ||
       $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
-    //-------------------------
-    // Send Response
-    //-------------------------
-    res.json({ title, description, price, image });
+    /* Send Response */
+    res.json({
+      url,
+      title,
+      description,
+      price,
+      mrp: mrp ? cleanPrice(mrp) : null,
+      discount,
+      rating,
+      reviews,
+      image
+    });
 
   } catch (error) {
     console.error("❌ Scraper Error:", error);
@@ -102,10 +114,7 @@ app.get("/scrape", async (req, res) => {
   }
 });
 
-// -------------------------
-// Start Server
-// -------------------------
+/* Run server */
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
-
