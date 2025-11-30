@@ -14,20 +14,37 @@ const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
 // -------------------------
 // Helper: Clean Price
 // -------------------------
-function cleanPrice(rawPrice) {
-  if (!rawPrice) return null;
+function cleanPrice(priceText) {
+  if (!priceText) return null;
 
-  // Match numbers with optional decimal
-  const numbers = rawPrice.match(/\d+(\.\d+)?/g);
-  if (!numbers || numbers.length === 0) return null;
+  // Remove currency symbols, spaces, decimals like ".00x"
+  let price = priceText
+    .replace(/[^\d.,]/g, "") // keep digits , and .
+    .replace(/\.\d+$/, ""); // remove trailing decimals
 
-  // Take first number only
-  const number = parseFloat(numbers[0]);
+  // Format into normal INR price (remove multiple commas)
+  price = price.replace(/,+/g, ",");
+  return price;
+}
 
-  // Remove decimal if integer
-  const finalNumber = Number.isInteger(number) ? number.toString() : number.toFixed(2);
+async function scrapeAmazon($) {
+  let price =
+    cleanPrice($('#corePriceDisplay_desktop_feature_div .a-price-whole').text()) ||
+    cleanPrice($('.a-price .a-offscreen').first().text()) ||
+    null;
 
-  return `₹${finalNumber}`;
+  if (!price) return "Not Available";
+  return price;
+}
+
+async function scrapeFlipkart($) {
+  let price =
+    cleanPrice($('._30jeq3._16Jk6d').text()) ||
+    cleanPrice($('.a-price-whole').text()) || // fallback (rare)
+    null;
+
+  if (!price) return "Not Available";
+  return price;
 }
 
 // -------------------------
