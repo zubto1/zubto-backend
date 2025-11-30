@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const axios = require("axios");
+const fetch = require("node-fetch");
 const cheerio = require("cheerio");
 
 const app = express();
@@ -8,75 +8,104 @@ app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// 🔹 Remove weird decimals, duplicate symbols, and whitespace
-function cleanPrice(price) {
-  if (!price) return null;
+// 🟢 Replace with your real ScraperAPI key
+const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
 
-  price = price.replace(/[^\d₹]/g, ""); // Keep ₹ and numbers only
+// -------------------------
+// Helper: Clean Price
+// -------------------------
+function cleanPrice(rawPrice) {
+  if (!rawPrice) return null;
 
-  // Remove double ₹₹
-  price = price.replace(/₹+/g, "₹");
+  // Match numbers with optional decimal
+  const numbers = rawPrice.match(/\d+(\.\d+)?/g);
+  if (!numbers || numbers.length === 0) return null;
 
-  // If more than 4 digits → format properly (e.g. 109900 → ₹10,990)
-  if (!price.startsWith("₹")) price = "₹" + price;
+  // Take first number only
+  const number = parseFloat(numbers[0]);
 
-  return price;
+  // Remove decimal if integer
+  const finalNumber = Number.isInteger(number) ? number.toString() : number.toFixed(2);
+
+  return `₹${finalNumber}`;
 }
 
-async function fetchAmazon(url) {
-  try {
-    const { data } = await axios.get(url);
-    const $ = cheerio.load(data);
-
-    const title = $("#productTitle").text().trim();
-    const price =
-      cleanPrice(
-        $("#corePrice_feature_div .a-price-whole").first().text().trim() ||
-        $("#priceblock_ourprice").text().trim() ||
-        $("#priceblock_dealprice").text().trim()
-      ) || null;
-
-    const image =
-      $("#landingImage").attr("data-old-hires") ||
-      $("#landingImage").attr("src") ||
-      $("img").first().attr("src");
-
-    return { title, price, image };
-  } catch {
-    return { title: null, price: null, image: null };
-  }
-}
-
-async function fetchFlipkart(url) {
-  try {
-    const { data } = await axios.get(url);
-    const $ = cheerio.load(data);
-
-    const title = $("span.VU-ZEz").first().text().trim();
-    const price = cleanPrice($("div.Nx9bqj").first().text().trim()) || null;
-    const image = $("img.DByuf4").first().attr("src");
-
-    return { title, price, image };
-  } catch {
-    return { title: null, price: null, image: null };
-  }
-}
-
-app.get("/scrape", async (req, res) => {
-  const url = req.query.url;
-
-  if (!url) return res.json({ error: "URL is required" });
-
-  const isAmazon = url.includes("amazon");
-  const isFlipkart = url.includes("flipkart");
-
-  let result = {};
-
-  if (isAmazon) result = await fetchAmazon(url);
-  else if (isFlipkart) result = await fetchFlipkart(url);
-  else result = { title: null, price: null, image: null };
-
-  return res.json(result);
+// -------------------------
+// Root route
+// -------------------------
+app.get("/", (req, res) => {
+  res.send("✅ Zubto Product Backend is running...");
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// -------------------------
+// Scraper route
+// -------------------------
+app.get("/scrape", async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: "Missing URL" });
+
+  try {
+    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
+    const response = await fetch(scraperURL);
+    const html = await response.text();
+
+    const $ = cheerio.load(html);
+
+    //-------------------------
+    // Extract Title
+    //-------------------------
+    const title =
+      $("meta[property='og:title']").attr("content") ||
+      $("span.B_NuCI").text().trim() || // Flipkart title
+      $("title").text().trim() ||
+      "No title found";
+
+    //-------------------------
+    // Extract Description
+    //-------------------------
+    const description =
+      $("meta[property='og:description']").attr("content") ||
+      $("meta[name='description']").attr("content") ||
+      "No description found";
+
+    //-------------------------
+    // Extract Price
+    //-------------------------
+    let rawPrice =
+      $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
+      $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
+      $("div.Udgv3w").first().text().trim() ||            // Sale price block
+      $("div.CxhGGd").first().text().trim() ||            // Another new class
+      $("._25b18c").first().text().trim() ||              // Mobile price layout
+      $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
+      $("meta[property='product:price:amount']").attr("content") ||
+      null;
+
+    const price = cleanPrice(rawPrice);
+
+    //-------------------------
+    // Extract Image
+    //-------------------------
+    const image =
+      $("meta[property='og:image']").attr("content") ||
+      $("img").first().attr("src") ||
+      "https://via.placeholder.com/400x300?text=No+Image";
+
+    //-------------------------
+    // Send Response
+    //-------------------------
+    res.json({ title, description, price, image });
+
+  } catch (error) {
+    console.error("❌ Scraper Error:", error);
+    res.status(500).json({ error: "Failed to fetch product data" });
+  }
+});
+
+// -------------------------
+// Start Server
+// -------------------------
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
+
