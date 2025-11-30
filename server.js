@@ -8,121 +8,112 @@ app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// 🟢 Replace with your real ScraperAPI key
-const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
+// ScraperAPI Key
+const apiKey = "263a13252d44362dfc8e75a90bfd9f14";
 
-// -------------------------
-// Helper: Clean Price
-// -------------------------
-function cleanPrice(priceText) {
-  if (!priceText) return null;
+// Cache for 24 hours
+const cache = {};
+const CACHE_DURATION = 24 * 60 * 60 * 1000;
 
-  // Remove currency symbols, spaces, decimals like ".00x"
-  let price = priceText
-    .replace(/[^\d.,]/g, "") // keep digits , and .
-    .replace(/\.\d+$/, ""); // remove trailing decimals
-
-  // Format into normal INR price (remove multiple commas)
-  price = price.replace(/,+/g, ",");
+function normalizePrice(price) {
+  if (!price) return null;
+  // Remove ₹ and spaces
+  price = price.replace(/[^\d]/g, "");
   return price;
 }
 
-async function scrapeAmazon($) {
-  let price =
-    cleanPrice($('#corePriceDisplay_desktop_feature_div .a-price-whole').text()) ||
-    cleanPrice($('.a-price .a-offscreen').first().text()) ||
+async function scrape(url) {
+  const cached = cache[url];
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    console.log("Serving from cache:", url);
+    return cached.data;
+  }
+
+  const apiUrl = `https://api.scraperapi.com/?api_key=${apiKey}&url=${encodeURIComponent(url)}&render=true`;
+
+  const response = await fetch(apiUrl);
+
+  if (!response.ok) {
+    throw new Error("ScraperAPI Limit Reached Or Error");
+  }
+
+  const body = await response.text();
+  const $ = cheerio.load(body);
+
+  let title =
+    $("#productTitle").text().trim() ||
+    $("span.B_NuCI").text().trim() ||
     null;
 
-  if (!price) return "Not Available";
-  return price;
-}
-
-async function scrapeFlipkart($) {
-  let price =
-    cleanPrice($('._30jeq3._16Jk6d').text()) ||
-    cleanPrice($('.a-price-whole').text()) || // fallback (rare)
+  let desc =
+    $("#feature-bullets").text().trim() ||
+    $("div._1mXcCf").text().trim() ||
     null;
 
-  if (!price) return "Not Available";
-  return price;
+  let image =
+    $("#imgTagWrapperId img").attr("src") ||
+    $("img._396cs4._2amPTt._3qGmMb").attr("src") ||
+    null;
+
+  // ⭐ AMAZON PRICE FIX
+  let price =
+    $("span.a-offscreen").first().text().trim() ||
+    $("span.a-price-whole").first().text().trim();
+
+  // ⭐ FLIPKART PRICE FIX
+  if (!price) {
+    price = $("div._30jeq3._16Jk6d").first().text().trim();
+  }
+
+  price = normalizePrice(price);
+
+  // ⭐ Discount
+  let discount =
+    $("span.a-price.a-text-price .a-offscreen").first().text().trim() ||
+    $("span._3Ay6Sb span").first().text().trim() ||
+    null;
+
+  if (discount) discount = discount.replace(/[^\d]/g, "");
+
+  // ⭐ Rating
+  let rating =
+    $("span.a-icon-alt").first().text().trim() ||
+    $("div._3LWZlK").first().text().trim() ||
+    null;
+
+  // ⭐ Reviews Count
+  let reviews =
+    $("#acrCustomerReviewText").first().text().trim() ||
+    $("span._2_R_DZ span span").last().text().trim() ||
+    null;
+
+  const result = {
+    url,
+    title: title || "Not Available",
+    description: desc || "Not Available",
+    image: image || "Not Available",
+    price: price || "Not Available",
+    discount: discount || "Not Available",
+    rating: rating || "Not Available",
+    reviews: reviews || "Not Available",
+  };
+
+  cache[url] = { timestamp: Date.now(), data: result };
+  return result;
 }
 
-// -------------------------
-// Root route
-// -------------------------
-app.get("/", (req, res) => {
-  res.send("✅ Zubto Product Backend is running...");
-});
-
-// -------------------------
-// Scraper route
-// -------------------------
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Missing URL" });
+  if (!url) return res.status(400).json({ error: "URL required" });
 
   try {
-    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
-    const response = await fetch(scraperURL);
-    const html = await response.text();
-
-    const $ = cheerio.load(html);
-
-    //-------------------------
-    // Extract Title
-    //-------------------------
-    const title =
-      $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() || // Flipkart title
-      $("title").text().trim() ||
-      "No title found";
-
-    //-------------------------
-    // Extract Description
-    //-------------------------
-    const description =
-      $("meta[property='og:description']").attr("content") ||
-      $("meta[name='description']").attr("content") ||
-      "No description found";
-
-    //-------------------------
-    // Extract Price
-    //-------------------------
-    let rawPrice =
-      $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
-      $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
-      $("div.Udgv3w").first().text().trim() ||            // Sale price block
-      $("div.CxhGGd").first().text().trim() ||            // Another new class
-      $("._25b18c").first().text().trim() ||              // Mobile price layout
-      $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
-      $("meta[property='product:price:amount']").attr("content") ||
-      null;
-
-    const price = cleanPrice(rawPrice);
-
-    //-------------------------
-    // Extract Image
-    //-------------------------
-    const image =
-      $("meta[property='og:image']").attr("content") ||
-      $("img").first().attr("src") ||
-      "https://via.placeholder.com/400x300?text=No+Image";
-
-    //-------------------------
-    // Send Response
-    //-------------------------
-    res.json({ title, description, price, image });
-
+    const data = await scrape(url);
+    res.json(data);
   } catch (error) {
-    console.error("❌ Scraper Error:", error);
-    res.status(500).json({ error: "Failed to fetch product data" });
+    res.status(500).json({
+      error: "Failed to scrape. Maybe ScraperAPI credits finished?"
+    });
   }
 });
 
-// -------------------------
-// Start Server
-// -------------------------
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
-
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
