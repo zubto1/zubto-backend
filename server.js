@@ -12,33 +12,30 @@ const PORT = process.env.PORT || 3000;
 const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
 
 // -------------------------
-// Helper: Clean Price
+// Helper: Clean Price (Updated)
 // -------------------------
 function cleanPrice(rawPrice) {
   if (!rawPrice) return null;
 
-  // Match numbers with optional decimal
-  const numbers = rawPrice.match(/\d+(\.\d+)?/g);
-  if (!numbers || numbers.length === 0) return null;
+  // Remove commas, whitespace, ₹ symbol etc.
+  const cleaned = rawPrice.replace(/[^0-9.]/g, "");
+  if (!cleaned) return null;
 
-  // Take first number only
-  const number = parseFloat(numbers[0]);
+  const number = parseFloat(cleaned);
+  if (isNaN(number)) return null;
 
-  // Remove decimal if integer
-  const finalNumber = Number.isInteger(number) ? number.toString() : number.toFixed(2);
-
-  return `₹${finalNumber}`;
+  return `₹${number.toLocaleString("en-IN")}`;
 }
 
 // -------------------------
-// Root route
+// Root Route
 // -------------------------
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
 });
 
 // -------------------------
-// Scraper route
+// Scraper Route
 // -------------------------
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
@@ -56,7 +53,7 @@ app.get("/scrape", async (req, res) => {
     //-------------------------
     const title =
       $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() || // Flipkart title
+      $("span.B_NuCI").text().trim() || // Flipkart
       $("title").text().trim() ||
       "No title found";
 
@@ -66,18 +63,18 @@ app.get("/scrape", async (req, res) => {
     const description =
       $("meta[property='og:description']").attr("content") ||
       $("meta[name='description']").attr("content") ||
-      "No description found";
+      "No description available";
 
     //-------------------------
-    // Extract Price
+    // Extract Price (Updated)
     //-------------------------
     let rawPrice =
-      $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
-      $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
-      $("div.Udgv3w").first().text().trim() ||            // Sale price block
-      $("div.CxhGGd").first().text().trim() ||            // Another new class
-      $("._25b18c").first().text().trim() ||              // Mobile price layout
-      $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
+      $("div.Nx9bqj.CxhGGd").first().text().trim() || // Flipkart NEW
+      $("div._30jeq3._16Jk6d").first().text().trim() || // Flipkart OLD
+      $("span._30jeq3").first().text().trim() || // Mobile layout
+      $("#priceblock_ourprice").text().trim() || // Amazon Our Price
+      $("#priceblock_dealprice").text().trim() || // Amazon Deal Price
+      $("[class*='price']").first().text().trim() || // Fallback class
       $("meta[property='product:price:amount']").attr("content") ||
       null;
 
@@ -106,5 +103,5 @@ app.get("/scrape", async (req, res) => {
 // Start Server
 // -------------------------
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
