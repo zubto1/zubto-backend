@@ -8,100 +8,80 @@ app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// 🟢 Replace with your real ScraperAPI key
 const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5";
 
 // -------------------------
-// Helper: Clean Price (Updated)
+// Improved Price Formatter (No decimals)
 // -------------------------
 function cleanPrice(rawPrice) {
   if (!rawPrice) return null;
 
-  // Remove commas, whitespace, ₹ symbol etc.
-  const cleaned = rawPrice.replace(/[^0-9.]/g, "");
+  const cleaned = rawPrice.replace(/[^0-9]/g, ""); // Remove everything except numbers
   if (!cleaned) return null;
 
-  const number = parseFloat(cleaned);
+  const number = parseInt(cleaned);
   if (isNaN(number)) return null;
 
   return `₹${number.toLocaleString("en-IN")}`;
 }
 
 // -------------------------
-// Root Route
-// -------------------------
 app.get("/", (req, res) => {
-  res.send("✅ Zubto Product Backend is running...");
+  res.send("🚀 Zubto Backend Running!");
 });
 
 // -------------------------
-// Scraper Route
-// -------------------------
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "Missing URL" });
+  if (!url) return res.status(400).json({ error: "URL Missing" });
 
   try {
     const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
     const html = await response.text();
-
     const $ = cheerio.load(html);
 
-    //-------------------------
-    // Extract Title
-    //-------------------------
+    // ---------- Title ----------
     const title =
       $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() || // Flipkart
+      $("span.B_NuCI").text().trim() ||
       $("title").text().trim() ||
       "No title found";
 
-    //-------------------------
-    // Extract Description
-    //-------------------------
+    // ---------- Description ----------
     const description =
       $("meta[property='og:description']").attr("content") ||
       $("meta[name='description']").attr("content") ||
-      "No description available";
+      "No description found";
 
-    //-------------------------
-    // Extract Price (Updated)
-    //-------------------------
+    // ---------- Price (Updated Flipkart + Amazon) ----------
     let rawPrice =
-      $("div.Nx9bqj.CxhGGd").first().text().trim() || // Flipkart NEW
-      $("div._30jeq3._16Jk6d").first().text().trim() || // Flipkart OLD
-      $("span._30jeq3").first().text().trim() || // Mobile layout
-      $("#priceblock_ourprice").text().trim() || // Amazon Our Price
-      $("#priceblock_dealprice").text().trim() || // Amazon Deal Price
-      $("[class*='price']").first().text().trim() || // Fallback class
+      $("div.Nx9bqj.CxhGGd").first().text().trim() || // Flipkart main class
+      $("div._30jeq3._16Jk6d").first().text().trim() || // Flipkart old
+      $("span._30jeq3").first().text().trim() || // Mobile view
+      $("[class*='price'] span").first().text().trim() || // deeper span
+      $("div._16Jk6d").first().text().trim() || // New test layout
+      $("#priceblock_ourprice").text().trim() || // Amazon
+      $("#priceblock_dealprice").text().trim() || // Amazon deal
+      $("#tp_price_block_total_price_ww").text().trim() || // Amazon total price fallback
       $("meta[property='product:price:amount']").attr("content") ||
       null;
 
     const price = cleanPrice(rawPrice);
 
-    //-------------------------
-    // Extract Image
-    //-------------------------
+    // ---------- Image ----------
     const image =
       $("meta[property='og:image']").attr("content") ||
       $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
-    //-------------------------
-    // Send Response
-    //-------------------------
     res.json({ title, description, price, image });
 
-  } catch (error) {
-    console.error("❌ Scraper Error:", error);
-    res.status(500).json({ error: "Failed to fetch product data" });
+  } catch (err) {
+    console.error("❌ Scraper Error:", err);
+    res.status(500).json({ error: "Scraping failed" });
   }
 });
 
 // -------------------------
-// Start Server
-// -------------------------
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
