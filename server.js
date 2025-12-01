@@ -7,113 +7,69 @@ const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
+const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY; // Set in Render
 
-// ScraperAPI Key
-const apiKey = "263a13252d44362dfc8e75a90bfd9f14";
-
-// Cache for 24 hours
-const cache = {};
-const CACHE_DURATION = 24 * 60 * 60 * 1000;
-
-function normalizePrice(price) {
-  if (!price) return null;
-  // Remove ₹ and spaces
-  price = price.replace(/[^\d]/g, "");
-  return price;
-}
-
-async function scrape(url) {
-  const cached = cache[url];
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log("Serving from cache:", url);
-    return cached.data;
-  }
-
-  const apiUrl = `https://api.scraperapi.com/?api_key=${apiKey}&url=${encodeURIComponent(url)}&render=true`;
-
-  const response = await fetch(apiUrl);
-
-  if (!response.ok) {
-    throw new Error("ScraperAPI Limit Reached Or Error");
-  }
-
-  const body = await response.text();
-  const $ = cheerio.load(body);
-
-  let title =
-    $("#productTitle").text().trim() ||
-    $("span.B_NuCI").text().trim() ||
-    null;
-
-  let desc =
-    $("#feature-bullets").text().trim() ||
-    $("div._1mXcCf").text().trim() ||
-    null;
-
-  let image =
-    $("#imgTagWrapperId img").attr("src") ||
-    $("img._396cs4._2amPTt._3qGmMb").attr("src") ||
-    null;
-
-  // ⭐ AMAZON PRICE FIX
-  let price =
-    $("span.a-offscreen").first().text().trim() ||
-    $("span.a-price-whole").first().text().trim();
-
-  // ⭐ FLIPKART PRICE FIX
-  if (!price) {
-    price = $("div._30jeq3._16Jk6d").first().text().trim();
-  }
-
-  price = normalizePrice(price);
-
-  // ⭐ Discount
-  let discount =
-    $("span.a-price.a-text-price .a-offscreen").first().text().trim() ||
-    $("span._3Ay6Sb span").first().text().trim() ||
-    null;
-
-  if (discount) discount = discount.replace(/[^\d]/g, "");
-
-  // ⭐ Rating
-  let rating =
-    $("span.a-icon-alt").first().text().trim() ||
-    $("div._3LWZlK").first().text().trim() ||
-    null;
-
-  // ⭐ Reviews Count
-  let reviews =
-    $("#acrCustomerReviewText").first().text().trim() ||
-    $("span._2_R_DZ span span").last().text().trim() ||
-    null;
-
-  const result = {
-    url,
-    title: title || "Not Available",
-    description: desc || "Not Available",
-    image: image || "Not Available",
-    price: price || "Not Available",
-    discount: discount || "Not Available",
-    rating: rating || "Not Available",
-    reviews: reviews || "Not Available",
-  };
-
-  cache[url] = { timestamp: Date.now(), data: result };
-  return result;
-}
+app.get("/", (req, res) => {
+  res.send("Zubto Backend Running 🚀");
+});
 
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
-  if (!url) return res.status(400).json({ error: "URL required" });
+  if (!url) return res.json({ error: "Missing URL" });
 
   try {
-    const data = await scrape(url);
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({
-      error: "Failed to scrape. Maybe ScraperAPI credits finished?"
+    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
+    const response = await fetch(scraperURL);
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    const title =
+      $("meta[property='og:title']").attr("content") ||
+      $("title").text().trim() ||
+      "No title found";
+
+    const description =
+      $("meta[property='og:description']").attr("content") ||
+      $("meta[name='description']").attr("content") ||
+      "No description found";
+
+    const image =
+      $("meta[property='og:image']").attr("content") ||
+      $("img").first().attr("src") ||
+      null;
+
+    let price = null;
+
+    // Amazon
+    if (url.includes("amazon")) {
+      price =
+        $("#priceblock_ourprice").text().trim() ||
+        $("#priceblock_dealprice").text().trim() ||
+        $(".a-price-whole").first().text().trim();
+    }
+
+    // Flipkart
+    if (url.includes("flipkart")) {
+      price = $("._30jeq3").first().text().trim();
+    }
+
+    // Myntra
+    if (url.includes("myntra")) {
+      price = $(".pdp-price").text().trim();
+    }
+
+    res.json({
+      title,
+      description,
+      image,
+      price: price || "N/A"
     });
+
+  } catch (err) {
+    res.json({ error: err.message });
   }
 });
 
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => {
+  console.log("🔥 Server started on port:", PORT);
+});
