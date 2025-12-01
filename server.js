@@ -26,35 +26,53 @@ app.get("/scrape", async (req, res) => {
     const html = await response.text();
     const $ = cheerio.load(html);
 
+    //-------------------------
+    // Extract Title
+    //-------------------------
     const title =
       $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() ||
+      $("span.B_NuCI").text().trim() || // Flipkart title
       $("title").text().trim() ||
       "No title found";
 
+    //-------------------------
+    // Extract Description
+    //-------------------------
     const description =
       $("meta[property='og:description']").attr("content") ||
       $("meta[name='description']").attr("content") ||
       "No description found";
 
+    //-------------------------
+    // Extract Price (New Strong Version)
+    //-------------------------
     let price =
-      $("div._30jeq3._16Jk6d").first().text().trim() ||
-      $("div.Nx9bqj.CxhGGd").first().text().trim() ||
-      $("div.CxhGGd").first().text().trim() ||
-      $('div:contains("₹")').first().text().trim() ||
-      $("._25b18c").first().text().trim() ||
-      $("[class*=price], [class*=Price], span:contains('₹')").first().text().trim() ||
-      $("meta[property='product:price:amount']").attr("content") ||
+      $("div.Nx9bqj.CxhGGd").first().text().trim() || // Flipkart 2025 UI price
+      $("div._30jeq3._16Jk6d").first().text().trim() || // Older UI price
+      $("._25b18c").first().text().trim() || // Mobile UI
+      // Extract from JSON script data
+      html.match(/"sellingPrice":\{"units":\s*"(\d+)"\}/)?.[1] ||
       "Price not found";
 
-    // 🧼 Remove useless decimals (Amazon)
+    // Cleanup: If only numbers → convert to ₹ format
+    if (/^\d+$/.test(price)) {
+      price = `₹${Number(price).toLocaleString("en-IN")}`;
+    }
+
+    // Remove Amazon " .001 " issue
     price = price.replace(/\.0+1?$/, "").trim();
 
+    //-------------------------
+    // Extract Image
+    //-------------------------
     const image =
       $("meta[property='og:image']").attr("content") ||
       $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
+    //-------------------------
+    // Send Response
+    //-------------------------
     res.json({ title, description, price, image });
 
   } catch (error) {
