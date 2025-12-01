@@ -24,53 +24,37 @@ app.get("/scrape", async (req, res) => {
     const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
     const html = await response.text();
-
     const $ = cheerio.load(html);
 
-    //-------------------------
-    // Extract Title
-    //-------------------------
     const title =
       $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() || // Flipkart title
+      $("span.B_NuCI").text().trim() ||
       $("title").text().trim() ||
       "No title found";
 
-    //-------------------------
-    // Extract Description
-    //-------------------------
     const description =
       $("meta[property='og:description']").attr("content") ||
       $("meta[name='description']").attr("content") ||
       "No description found";
 
-    //-------------------------
-    // Extract Price
-    //-------------------------
-    //-------------------------
-    // Extract Price (Strong Version)
-    //-------------------------
-    let price = 
-    $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
-    $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
-    $("div.Udgv3w").first().text().trim() ||            // Sale price block
-    $("div.CxhGGd").first().text().trim() ||            // Another new class
-    $("._25b18c").first().text().trim() ||              // Mobile price layout
-    $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
-    $("meta[property='product:price:amount']").attr("content") ||
-    "Price not found";
+    let price =
+      $("div._30jeq3._16Jk6d").first().text().trim() ||
+      $("div.Nx9bqj.CxhGGd").first().text().trim() ||
+      $("div.CxhGGd").first().text().trim() ||
+      $('div:contains("₹")').first().text().trim() ||
+      $("._25b18c").first().text().trim() ||
+      $("[class*=price], [class*=Price], span:contains('₹')").first().text().trim() ||
+      $("meta[property='product:price:amount']").attr("content") ||
+      "Price not found";
 
-    //-------------------------
-    // Extract Image
-    //-------------------------
+    // 🧼 Remove useless decimals (Amazon)
+    price = price.replace(/\.0+1?$/, "").trim();
+
     const image =
       $("meta[property='og:image']").attr("content") ||
       $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
-    //-------------------------
-    // Response
-    //-------------------------
     res.json({ title, description, price, image });
 
   } catch (error) {
