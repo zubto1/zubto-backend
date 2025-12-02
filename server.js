@@ -9,7 +9,7 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 // 🟢 Replace with your real ScraperAPI key
-const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b"; 
+const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5"; 
 
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
@@ -24,6 +24,7 @@ app.get("/scrape", async (req, res) => {
     const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
     const html = await response.text();
+
     const $ = cheerio.load(html);
 
     //-------------------------
@@ -42,25 +43,19 @@ app.get("/scrape", async (req, res) => {
       $("meta[property='og:description']").attr("content") ||
       $("meta[name='description']").attr("content") ||
       "No description found";
-
+    
     //-------------------------
-    // Extract Price (New Strong Version)
+    // Extract Price (Strong Version)
     //-------------------------
-    let price =
-      $("div.Nx9bqj.CxhGGd").first().text().trim() || // Flipkart 2025 UI price
-      $("div._30jeq3._16Jk6d").first().text().trim() || // Older UI price
-      $("._25b18c").first().text().trim() || // Mobile UI
-      // Extract from JSON script data
-      html.match(/"sellingPrice":\{"units":\s*"(\d+)"\}/)?.[1] ||
-      "Price not found";
-
-    // Cleanup: If only numbers → convert to ₹ format
-    if (/^\d+$/.test(price)) {
-      price = `₹${Number(price).toLocaleString("en-IN")}`;
-    }
-
-    // Remove Amazon " .001 " issue
-    price = price.replace(/\.0+1?$/, "").trim();
+    let price = 
+    $("div._30jeq3._16Jk6d").first().text().trim() ||  // Flipkart old price
+    $("div.Nx9bqj.CxhGGd").first().text().trim() ||     // Flipkart 2025 new layout
+    $("div.Udgv3w").first().text().trim() ||            // Sale price block
+    $("div.CxhGGd").first().text().trim() ||            // Another new class
+    $("._25b18c").first().text().trim() ||              // Mobile price layout
+    $("[class*=price]").first().text().trim() ||        // Fallback with wildcard
+    $("meta[property='product:price:amount']").attr("content") ||
+    "Price not found";
 
     //-------------------------
     // Extract Image
@@ -71,7 +66,7 @@ app.get("/scrape", async (req, res) => {
       "https://via.placeholder.com/400x300?text=No+Image";
 
     //-------------------------
-    // Send Response
+    // Response
     //-------------------------
     res.json({ title, description, price, image });
 
