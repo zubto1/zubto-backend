@@ -7,73 +7,55 @@ const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
-
-// 🟢 Replace with your real ScraperAPI key
-const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b"; 
+const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b";
 
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
 });
 
-// 🧩 Scraper route
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "Missing URL" });
 
   try {
-    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
-    const response = await fetch(scraperURL);
+
+    // Force JS rendering + browser headers
+    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&render=true&keep_headers=true&url=${encodeURIComponent(url)}`;
+
+    const response = await fetch(scraperURL, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
+
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    //-------------------------
     // Extract Title
-    //-------------------------
     const title =
-      $("meta[property='og:title']").attr("content") ||
-      $("span.B_NuCI").text().trim() || // Flipkart title
+      $("span.B_NuCI").text().trim() ||
       $("title").text().trim() ||
       "No title found";
 
-    //-------------------------
-    // Extract Description
-    //-------------------------
-    const description =
-      $("meta[property='og:description']").attr("content") ||
-      $("meta[name='description']").attr("content") ||
-      "No description found";
-
-    //-------------------------
-    // Extract Price (New Strong Version)
-    //-------------------------
+    // Extract Price — updated selectors!!
     let price =
-      $("div.Nx9bqj.CxhGGd").first().text().trim() || // Flipkart 2025 UI price
-      $("div._30jeq3._16Jk6d").first().text().trim() || // Older UI price
-      $("._25b18c").first().text().trim() || // Mobile UI
-      // Extract from JSON script data
-      html.match(/"sellingPrice":\{"units":\s*"(\d+)"\}/)?.[1] ||
+      $("div.Nx9bqj.CxhGGd").first().text().trim() || // New Flipkart price
+      $("div._30jeq3._16Jk6d").first().text().trim() || // Old layout
+      $("meta[property='product:price:amount']").attr("content") ||
+      $("[class*=price]").first().text().trim() ||
       "Price not found";
 
-    // Cleanup: If only numbers → convert to ₹ format
-    if (/^\d+$/.test(price)) {
-      price = `₹${Number(price).toLocaleString("en-IN")}`;
-    }
+    // Cleanup: remove "₹", commas, weird decimals
+    price = price.replace(/[^\d₹]/g, "");
 
-    // Remove Amazon " .001 " issue
-    price = price.replace(/\.0+1?$/, "").trim();
-
-    //-------------------------
     // Extract Image
-    //-------------------------
     const image =
+      $("img._396cs4._2amPTt._3qGmMb").attr("src") ||
       $("meta[property='og:image']").attr("content") ||
-      $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
-    //-------------------------
-    // Send Response
-    //-------------------------
-    res.json({ title, description, price, image });
+    res.json({ title, price, image });
 
   } catch (error) {
     console.error("❌ Scraper Error:", error);
@@ -82,5 +64,5 @@ app.get("/scrape", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚀 Server ready @ ${PORT}`);
 });
