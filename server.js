@@ -9,7 +9,7 @@ app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 // 🟢 Replace with your real ScraperAPI key
-const SCRAPER_API_KEY = "254aa5de511e80f67e016d643d0caff5"; 
+const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b"; 
 
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
