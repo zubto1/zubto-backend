@@ -7,55 +7,98 @@ const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
-const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b";
+
+// 🟢 Replace with your real ScraperAPI key
+const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b"; 
 
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
 });
 
+// Scraper route
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "Missing URL" });
 
   try {
-
-    // Force JS rendering + browser headers
-    const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&render=true&keep_headers=true&url=${encodeURIComponent(url)}`;
-
-    const response = await fetch(scraperURL, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-        "Accept-Language": "en-US,en;q=0.9"
-      }
-    });
-
+    const scraperURL = `http://api.scraperapi.com?api_key=\( {SCRAPER_API_KEY}&url= \){encodeURIComponent(url)}`;
+    const response = await fetch(scraperURL);
     const html = await response.text();
+
     const $ = cheerio.load(html);
 
+    // Quick site detection for targeted extraction
+    const isFlipkart = url.includes("flipkart.com");
+    const isAmazon = url.includes("amazon.");
+
+    //-------------------------
     // Extract Title
+    //-------------------------
     const title =
-      $("span.B_NuCI").text().trim() ||
+      $("meta[property='og:title']").attr("content") ||
+      $("span.B_NuCI").text().trim() || // Flipkart title
       $("title").text().trim() ||
       "No title found";
 
-    // Extract Price — updated selectors!!
-    let price =
-      $("div.Nx9bqj.CxhGGd").first().text().trim() || // New Flipkart price
-      $("div._30jeq3._16Jk6d").first().text().trim() || // Old layout
-      $("meta[property='product:price:amount']").attr("content") ||
-      $("[class*=price]").first().text().trim() ||
-      "Price not found";
+    //-------------------------
+    // Extract Description
+    //-------------------------
+    const description =
+      $("meta[property='og:description']").attr("content") ||
+      $("meta[name='description']").attr("content") ||
+      "No description found";
+    
+    //-------------------------
+    // Extract Price (Enhanced Version)
+    //-------------------------
+    let price = "Price not found";
 
-    // Cleanup: remove "₹", commas, weird decimals
-    price = price.replace(/[^\d₹]/g, "");
+    if (isFlipkart) {
+      // Flipkart: Try divs, then grab inner span text (key fix for nested prices)
+      price =
+        $("div._30jeq3._16Jk6d").first().find('span').first().text().trim() ||
+        $("div.Nx9bqj.CxhGGd").first().find('span').first().text().trim() ||
+        $("div.Udgv3w").first().find('span').first().text().trim() ||
+        $("div.CxhGGd").first().find('span').first().text().trim() ||
+        $("._25b18c").first().find('span').first().text().trim() ||
+        $("span._3qZ21b").first().text().trim() || // Common price span
+        $("[class*='price']").first().find('span').first().text().trim() ||
+        // Fallback: Find any span with ₹ symbol (rupees)
+        $("span:contains('₹')").first().text().trim() ||
+        // Meta fallback
+        $("meta[property='product:price:amount']").attr("content") ||
+        "Price not found";
+    } else if (isAmazon) {
+      // Amazon: Specific selectors for rendered prices
+      price =
+        \( ("span.a-price-whole").first().text().trim() + \)("span.a-price-fraction").first().text().trim() ||
+        $("span.a-offscreen").first().text().trim() ||
+        $("#priceblock_ourprice").text().trim() ||
+        $("#priceblock_dealprice").text().trim() ||
+        ".a-price-symbol + .a-price-whole + .a-price-fraction".split(' ').reduce((el, sel) => \( (el).find(sel).first(), \)).text().trim() ||
+        // Fallback for $ symbol
+        \( ("span:contains(' \)')").first().text().trim() ||
+        "Price not found";
+    } else {
+      // Generic fallback for other sites
+      price =
+        $("[class*=price], [class*='Price']").first().text().trim() ||
+        $("meta[property='product:price:amount']").attr("content") ||
+        "Price not found";
+    }
 
+    //-------------------------
     // Extract Image
+    //-------------------------
     const image =
-      $("img._396cs4._2amPTt._3qGmMb").attr("src") ||
       $("meta[property='og:image']").attr("content") ||
+      $("img").first().attr("src") ||
       "https://via.placeholder.com/400x300?text=No+Image";
 
-    res.json({ title, price, image });
+    //-------------------------
+    // Response
+    //-------------------------
+    res.json({ title, description, price, image });
 
   } catch (error) {
     console.error("❌ Scraper Error:", error);
@@ -64,5 +107,5 @@ app.get("/scrape", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server ready @ ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
