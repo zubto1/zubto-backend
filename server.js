@@ -2,20 +2,20 @@ const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
+require("dotenv").config(); // Only works locally. Render ignores this.
 
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// 🟢 Replace with your real ScraperAPI key
-const SCRAPER_API_KEY = "971bac6a367029d56ec4018cb37d9a9b";
+// Load API key from Render Environment Variables
+const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 
 app.get("/", (req, res) => {
   res.send("✅ Zubto Product Backend is running...");
 });
 
-// 🧩 Scraper route
 app.get("/scrape", async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).json({ error: "Missing URL" });
@@ -37,10 +37,22 @@ app.get("/scrape", async (req, res) => {
       $("meta[name='description']").attr("content") ||
       "No description found";
 
-    const image =
+    let image =
       $("meta[property='og:image']").attr("content") ||
       $("img").first().attr("src") ||
-      "https://via.placeholder.com/400x300?text=No+Image";
+      "";
+
+    // ⭐ FIX: Convert Amazon relative image URLs to full URLs
+    if (image.startsWith("//")) {
+      image = "https:" + image;
+    }
+    if (image.startsWith("/")) {
+      image = "https://www.amazon.in" + image;
+    }
+
+    if (!image) {
+      image = "https://via.placeholder.com/400x300?text=No+Image";
+    }
 
     res.json({ title, description, image });
   } catch (error) {
