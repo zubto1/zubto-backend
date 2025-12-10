@@ -2,14 +2,13 @@ const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch");
 const cheerio = require("cheerio");
-require("dotenv").config(); // Only works locally. Render ignores this.
 
 const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
 
-// Load API key from Render Environment Variables
+// 🔐 API key from Render Environment Variables (NO dotenv needed)
 const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 
 app.get("/", (req, res) => {
@@ -24,7 +23,6 @@ app.get("/scrape", async (req, res) => {
     const scraperURL = `http://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
     const response = await fetch(scraperURL);
     const html = await response.text();
-
     const $ = cheerio.load(html);
 
     const title =
@@ -42,12 +40,17 @@ app.get("/scrape", async (req, res) => {
       $("img").first().attr("src") ||
       "";
 
-    // ⭐ FIX: Convert Amazon relative image URLs to full URLs
+    // ⭐ FIX AMAZON IMAGE (multiple fallbacks)
     if (image.startsWith("//")) {
       image = "https:" + image;
     }
     if (image.startsWith("/")) {
+      // Main Amazon
       image = "https://www.amazon.in" + image;
+    }
+    if (!image.includes("amazon") && !image.includes("http")) {
+      // Extra domain fallback for Amazon short links
+      image = "https://www.amzn.in" + image;
     }
 
     if (!image) {
