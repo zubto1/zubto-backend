@@ -35,26 +35,45 @@ app.get("/scrape", async (req, res) => {
       $("meta[name='description']").attr("content") ||
       "No description found";
 
-    let image =
-      $("meta[property='og:image']").attr("content") ||
-      $("img").first().attr("src") ||
-      "";
+    let image = "";
 
-    // ⭐ FIX AMAZON IMAGE (multiple fallbacks)
+    // 1️⃣ Main Amazon product image
+    image = $("#landingImage").attr("src")
+    || $("#landingImage").attr("data-old-hires")
+    || $("img[data-old-hires]").attr("data-old-hires")
+    || $("img[data-a-dynamic-image]").attr("data-a-dynamic-image")
+    || "";
+    
+    // 2️⃣ If dynamic image returns JSON, extract first URL
+    if (image && image.includes("{")) {
+      try {
+        const json = JSON.parse(image);
+        const keys = Object.keys(json);
+        if (keys.length > 0) image = keys[0];
+      } catch {}
+    }
+    
+    // ⭐ Fallback to meta image
+    if (!image) {
+      image = $("meta[property='og:image']").attr("content") || "";
+    }
+    
+    // ⭐ Final fallback prevents Amazon tracking URLs
+    if (!image || image.includes("fls-eu.amazon")) {
+      image = "https://via.placeholder.com/400x300?text=No+Image";
+    }
+    
+    // ⭐ Fix relative links
     if (image.startsWith("//")) {
       image = "https:" + image;
     }
     if (image.startsWith("/")) {
-      // Main Amazon
       image = "https://www.amazon.in" + image;
     }
-    if (!image.includes("amazon") && !image.includes("http")) {
-      // Extra domain fallback for Amazon short links
+    
+    // Extra fallback domain
+    if (!image.includes("http")) {
       image = "https://www.amzn.in" + image;
-    }
-
-    if (!image) {
-      image = "https://via.placeholder.com/400x300?text=No+Image";
     }
 
     res.json({ title, description, image });
